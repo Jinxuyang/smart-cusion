@@ -1,240 +1,239 @@
-#include <SoftwareSerial.h>
+#include <ESP8266WiFi.h>
 
 
-/***********************WIFI及密钥配置************************/
-String ssid ="CMCC-a7nn";       //WIFI名称，区分大小写，不支持5G
-String password="r59kkj9f";  //WIFI密码，区分大小写
-String uid ="1065cb19f6d3ced80e2d3a378f861f50";    //用户私钥，巴法云控制台获取
-String myTopic ="SmartCusion";                      //用户主题，巴法云控制台创建
-/***********************************************************/
+//巴法云服务器地址默认即可
+#define TCP_SERVER_ADDR "bemfa.com"
+//服务器端口//TCP创客云端口8344//TCP设备云端口8340
+#define TCP_SERVER_PORT "8344"
 
-/***********************传感器引脚设置************************/
-const int HEATER = 2;
-const int LM35 = A1;
-const int PRESS = 123;
-const int BUZZER = 123;
-/***********************************************************/
+///****************需要修改的地方*****************///
 
-/***********************esp-01设置************************/
-SoftwareSerial mySerial(13, 12); // RX, TX  //初始化软串口,pin13接8266 TX，Pin12接8266 RX
-#define KEEPALIVEATIME 30*1000     //心跳间隔，默认30秒发一次心跳
-unsigned long preHeartTick = 0; //心跳时间
-#define TIMEOUT 5000 //接收esp8266反馈的超时时间
-String tcpLocalPort="";
-/***********************************************************/
+//WIFI名称，区分大小写，不要写错
+#define DEFAULT_STASSID  "CMCC-a7nn"
+//WIFI密码
+#define DEFAULT_STAPSW "r59kkj9f"
+//用户私钥，可在控制台获取,修改为自己的UID
+String UID = "1065cb19f6d3ced80e2d3a378f861f50";
+//主题名字，可在控制台新建
+String TOPIC = "SmartCusion"; //用于传输温湿度的主题
+//DHT11引脚值
+//int pinDHT11 = D4;  //连接dht11的引脚
+//单片机LED引脚值
+const int LED_Pin = D2;  //假设连接led的引脚
+//主题名字，可在控制台新建
+String TOPIC2  = "SmartCusion";  //用于led控制的主题
 
-unsigned long sitTimeTick = 0;
+///*********************************************///
+//led 控制函数
+void turnOnLed();
+void turnOffLed();
+//led状态状态
+String heaterStatus = "off";
 
-unsigned long maxSitTime = 30 * 60 * 1000;
+//设置上传速率2s（1s<=upDataTime<=60s）
+//下面的2代表上传间隔是2秒
+#define upDataTime 2*1000
 
-unsigned int heaterStartTemp = 22;
+//最大字节数
+#define MAX_PACKETSIZE 512
 
-int buzzerFreq = 1000;
+//tcp客户端相关初始化，默认即可
+WiFiClient TCPclient;
+String TcpClient_Buff = "";
+unsigned int TcpClient_BuffIndex = 0;
+unsigned long TcpClient_preTick = 0;
+unsigned long preHeartTick = 0;//心跳
+unsigned long preTCPStartTick = 0;//连接
+bool preTCPConnected = false;
 
-int pressStatus = false;
+
+//相关函数初始化
+//连接WIFI
+void doWiFiTick();
+void startSTA();
+
+//TCP初始化连接
+void doTCPClientTick();
+void startTCPClient();
+void sendtoTCPServer(String p);
+
+/*
+  *发送数据到TCP服务器
+ */
+void sendtoTCPServer(String p){
+  if (!TCPclient.connected()) {
+    Serial.println("Client is not readly");
+    return;
+  }
+  TCPclient.print(p);
+  Serial.println("[Send to TCPServer]:");
+  Serial.println(p);
+}
 
 
 /*
- * 打开加热器函数
- */
-void turnOnHeater(){
-  Serial.println("Turn on heater");  //打印调试信息
-  digitalWrite(HEATER,LOW); //改变引脚状态
+*初始化和服务器建立连接
+*/
+void startTCPClient(){
+  if (TCPclient.connect(TCP_SERVER_ADDR, atoi(TCP_SERVER_PORT))) {
+    Serial.print("\nConnected to server:");
+    Serial.printf("%s:%d\r\n",TCP_SERVER_ADDR,atoi(TCP_SERVER_PORT));
+    String tcpTemp="";
+    tcpTemp = "cmd=1&uid="+UID+"&topic="+TOPIC2+"\r\n";
+
+    sendtoTCPServer(tcpTemp);
+    preTCPConnected = true;
+    preHeartTick = millis();
+    TCPclient.setNoDelay(true);
+  } else {
+    Serial.print("Failed connected to server:");
+    Serial.println(TCP_SERVER_ADDR);
+    TCPclient.stop();
+    preTCPConnected = false;
+  }
+  preTCPStartTick = millis();
 }
+
+
 
 /*
- * 关闭加热器函数
- */
-void turnOffHeater(){
-  Serial.println("Turn off heater");//打印调试信息
-  digitalWrite(HEATER,HIGH);//改变引脚状态
-}
+  *检查数据，发送数据
+*/
+void doTCPClientTick(){
+ //检查是否断开，断开后重连
+  if(WiFi.status() != WL_CONNECTED) return;
 
-/*
- * 获取当前温度
- */
-float getTemp() {
-  float tempVal = (analogRead(LM35) * 4.88 / 10);
-  Serial.print("Temperature = ");
-  Serial.print(tempVal);
-  Serial.println(" Degree Celsius");
-  return tempVal;
-}
+  if (!TCPclient.connected()) {//断开重连
+    if (preTCPConnected == true) {
 
-/*
- * 发送当前温度
- */
-void sendTemp() {
-  float temp = getTemp();
-  mySerial.println("cmd=2&uid=" +uid+ "&topic=" +myTopic+ "&msg=temp:" +temp+ "\r\n");
-  Serial.println("Send temp success");
-}
+      preTCPConnected = false;
+      preTCPStartTick = millis();
+      Serial.println();
+      Serial.println("TCP Client disconnected.");
+      TCPclient.stop();
+    } else if(millis() - preTCPStartTick > 1*1000) //重新连接
+      startTCPClient();
+  } else {
+    if (TCPclient.available()) {//收数据
+      char c =TCPclient.read();
+      TcpClient_Buff += c;
+      TcpClient_BuffIndex++;
+      TcpClient_preTick = millis();
+      
+      if(TcpClient_BuffIndex>=MAX_PACKETSIZE - 1){
+        TcpClient_BuffIndex = MAX_PACKETSIZE-2;
+        TcpClient_preTick = TcpClient_preTick - 200;
+      }
+      preHeartTick = millis();
+    }
+    if(millis() - preHeartTick >= upDataTime){//上传数据
+      preHeartTick = millis();
 
-void sendStartSitTime(unsigned long startSitTime) {
-  mySerial.println("cmd=2&uid=" +uid+ "&topic=" +myTopic+ "&msg=startSitTime:" +startSitTime+ "\r\n");
-  Serial.println("Send startSitTime success");
-}
-
-void sendEndSitTime(unsigned long endSitTime) {
-  mySerial.println("cmd=2&uid=" +uid+ "&topic=" +myTopic+ "&msg=endSitTime:" +endSitTime+ "\r\n");
-  Serial.println("Send endSitTime success");
-}
-
-/*
- * 重启函数，执行重启
- */
-void(* resetFunc) (void) = 0;//重启函数
-
-void subscribeServer () {
-  SendCommand("AT+CIPSTART=\"TCP\",\"bemfa.com\",8344","OK");  // 连接巴法创客云服务器，IP: bemfa.com,端口：8344
-  delay(200);
-  Serial.println("Subscribe topic");//打印调试信息
-  mySerial.println("AT+CIPSEND");  //进入透传模式，下面发的都会无条件传输
-  delay(1000);
-  mySerial.println("cmd=1&uid="+uid+"&topic="+myTopic+"\r\n");  //发送订阅指令
-}
-
-/*
- * 检查收到的信息 
- * 字符串匹配，匹配到开灯指令，进行开灯，匹配到关灯指令，进行关灯
- * 匹配到错误信息，进行重启启动(一般为网络情况的故障)
- */
-void check_msg(String msg){
-  if(msg.indexOf("&msg=heater:on") >= 0) {   //如果检测到开灯指令
-    turnOnHeater();
-  }else if(msg.indexOf("&msg=heater:off") >= 0) { //如果检测到关灯指令
-    turnOffHeater();
-  }else if(msg.indexOf("&msg=maxSitTime:") >= 0) {
-    int start = msg.lastIndexOf("&msg=maxSitTime:");
-    maxSitTime = msg.substring(start + 1, start + 3).toInt() * 60 * 1000;
-  }else if(msg.indexOf("&msg=heaterStartTemp:") >= 0) {
-    int start = msg.lastIndexOf("&msg=heaterStartTemp:");
-    heaterStartTemp = msg.substring(start + 1, start + 3).toInt();
-  }else if(msg.indexOf("CLOSED") >= 0){  //检测到断开服务器连接，重新连接
-    subscribeServer(); //发送订阅指令
-  }else if(msg.indexOf("ERROR") >= 0 || msg.indexOf("busy") >= 0){  //检测到错误反馈或者网络繁忙，重启arduino
-    Serial.println("beginning restart");
-    Serial.println(msg);
-    resetFunc(); //重启函数，执行重启
+      /*****************获取DHT11 温湿度*****************/
+      // read without samples.
+      byte temperature = 0;
+      byte humidity = 0;
+      //int err = SimpleDHTErrSuccess;
+      // if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+      //   Serial.print("Read DHT11 failed, err="); Serial.println(err);delay(1000);
+      //   return;
+      // }
+      
+      /*********************数据上传*******************/
+      /*
+        数据用#号包裹，以便app分割出来数据，&msg=#23#80#on#\r\n，即#温度#湿度#按钮状态#，app端会根据#号分割字符串进行取值，以便显示
+        如果上传的数据不止温湿度，可在#号后面继续添加&msg=#23#80#data1#data2#data3#data4#\r\n,app字符串分割的时候，要根据上传的数据进行分割
+      */
+      String upstr = "";
+      upstr = "cmd=2&uid="+UID+"&topic="+TOPIC+"&msg=#"+temperature+"#"+humidity+"#"+heaterStatus+"#\r\n";
+      sendtoTCPServer(upstr);
+      upstr = "";
+    }
+  }
+  if((TcpClient_Buff.length() >= 1) && (millis() - TcpClient_preTick>=200)) {//data ready
+    TCPclient.flush();
+    Serial.println("Buff");
+    Serial.println(TcpClient_Buff);
+    //////字符串匹配，检测发了的字符串TcpClient_Buff里面是否包含&msg=on，如果有，则打开开关
+    if((TcpClient_Buff.indexOf("&msg=on") > 0)) {
+      turnOnLed();
+    //////字符串匹配，检测发了的字符串TcpClient_Buff里面是否包含&msg=off，如果有，则关闭开关
+    }else if((TcpClient_Buff.indexOf("&msg=off") > 0)) {
+      turnOffLed();
+    }
+   TcpClient_Buff="";//清空字符串，以便下次接收
+   TcpClient_BuffIndex = 0;
   }
 }
 
+
+//打开灯泡
+void turnOnLed(){
+  Serial.println("Turn ON");
+  digitalWrite(LED_Pin,LOW);
+  heaterStatus = "on";
+}
+//关闭灯泡
+void turnOffLed(){
+  Serial.println("Turn OFF");
+  digitalWrite(LED_Pin,HIGH);
+  heaterStatus = "off";
+}
+
+
+void startSTA(){
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(DEFAULT_STASSID, DEFAULT_STAPSW);
+}
+
+
+
+/**************************************************************************
+                                 WIFI
+***************************************************************************/
 /*
- * 
- * 系统初始化
- * 初始化串口，并初始化WIFI
- */
+  WiFiTick
+  检查是否需要初始化WiFi
+  检查WiFi是否连接上，若连接成功启动TCP Client
+  控制指示灯
+*/
+void doWiFiTick(){
+  static bool startSTAFlag = false;
+  static bool taskStarted = false;
+  static uint32_t lastWiFiCheckTick = 0;
+
+  if (!startSTAFlag) {
+    startSTAFlag = true;
+    startSTA();
+    Serial.printf("Heap size:%d\r\n", ESP.getFreeHeap());
+  }
+
+  //未连接1s重连
+  if (WiFi.status() != WL_CONNECTED) {
+    if (millis() - lastWiFiCheckTick > 1000) {
+      lastWiFiCheckTick = millis();
+    }
+  } else {
+    if (taskStarted == false) {
+      taskStarted = true;
+      Serial.print("\r\nGet IP Address: ");
+      Serial.println(WiFi.localIP());
+      startTCPClient();
+    }
+  }
+}
+
+// 初始化，相当于main 函数
 void setup() {
-  Serial.begin(9600);  //arduino波特率，仅用于查看调试信息，连接串口调试助手可以查看
-  mySerial.begin(9600);  //设置软串口波特率，建议9600，如果波特率过大，接收的指令存在乱码的情况（115200实测会乱码）
-  
-  Serial.println("begin init");  //打印调试信息
-  SendCommand("AT+RST","ready");  //重启WIFI模块
-  delay(2000);
-  SendCommand("AT+CWMODE=3","OK"); //设置路由器模式 1 station模式 2 AP路由器模式 3 station+AP混合模式
-  SendCommand("AT+CWJAP=\"" +ssid+"\",\"" + password + "\"","OK"); //设置模块WIFI名称和WIFI密码
-  delay(5000);
-  SendCommand("AT+CIPMODE=1","OK");   //开启透明传输模式
-  delay(1000);
-  subscribeServer();
+  Serial.begin(115200);
 
-  pinMode(PRESS, INPUT);  
-  pinMode(BUZZER, OUTPUT);  
-  pinMode(HEATER, OUTPUT);  
-}
- 
-void loop(){
-  String IncomingString="";  //用于接收串口发来的数据
-  boolean StringReady = false;  //接收到串口数据的标志
- 
-  while (mySerial.available()){//如果接收到esp8266的数据
-    IncomingString=mySerial.readString(); //获取esp8266反馈的数据，及esp8266收到远程服务器发来的数据
-    StringReady= true;
-  }
-  
-  if (StringReady){ //如果有数据发来，检查接收到的数据
-    Serial.println("Received String: " + IncomingString);  //串口打印显示收到的数据
-    check_msg(IncomingString);  //调用检查数据函数，进行检查数据
-  }
-
-  if(millis() - preHeartTick >= KEEPALIVEATIME){//定时函数，用于保持心跳，30秒检测一次（现在时间减去上次时间是否大于或等于30s）
-      preHeartTick = millis(); //获取现在时间，用于下次计算
-      mySerial.print("+++");  //退出透传模式，以便检测连接
-      delay(200);
-
-      int connected_status = SendCommand("AT+CIPSTATUS","8344");  //检测是否订阅成功
-      if(connected_status == true){  //未成功订阅
-           subscribeServer();
-      }else{  //如果没有断开连接，发送心跳指令
-                mySerial.println("AT+CIPSEND"); //进入透传模式，下面发的都会无条件传输
-                delay(200);
-                Serial.println("--send ping");//打印调试信息
-                mySerial.println("cmd=0&msg=keep\r\n");  //发送心跳
-      }
-  }
-
-  if (getTemp() < heaterStartTemp) {
-    digitalWrite(HEATER, LOW);
-  } else if (getTemp() > heaterStartTemp + 2) {
-    digitalWrite(HEATER, HIGH);  
-  }
-
-  bool isSetTime = false;
-  if (pressStatus) {
-    if (!isSetTime) {
-      sitTimeTick = millis();
-      isSetTime = true;
-    }
-
-    if (millis() - sitTimeTick > maxSitTime) {
-      tone(BUZZER, buzzerFreq, 500);
-    }
-  } else {
-    isSetTime = false;
-  }
+  //初始化引脚为输出
+	pinMode(LED_Pin,OUTPUT);
 }
 
-/*
- * 发送AT指令函数
- * ****************************
- * cmd为需要发送的指令
- * ack是期待收到的结果
- * ****************************
- */
-boolean SendCommand(String cmd, String ack){
-  mySerial.println(cmd); // Send "AT+" command to module
-  if (!echoFind(ack)) { // 如果超时或者错误响应
-    return true; // 返回真
-  } else {
-    return false;
-  }
-}
-/*
- * 检查收到的字符串
- * 配合SendCommand函数使用
- */
-boolean echoFind(String keyword) {
- long deadline = millis() + TIMEOUT;
- while(millis() < deadline){
-  if (mySerial.available()){
-    String get_msg = mySerial.readString();
-    Serial.println(get_msg);
-     check_msg(get_msg);  //检查数据
-     int keyword_index = get_msg.indexOf(keyword);//获取关键字所在字符串位置
-     if(keyword_index >=0){//如果接收到的字符串有期待接收到的关键字
-      if(keyword == "8344"){ //判断端口是否变化，如果变化，重新订阅
-        if(tcpLocalPort ==""){ //如果本地端口为空
-          tcpLocalPort = get_msg.substring(keyword_index+5,keyword_index+10); //获取本地tcp端口
-        }else{
-          if(tcpLocalPort != get_msg.substring(keyword_index+5,keyword_index+10)){ //如果本地端口变化
-              tcpLocalPort = get_msg.substring(keyword_index+5,keyword_index+10);//获取本地tcp端口
-              return false; //返回错误
-            }
-        }
-      }
-        return true;  //返回真
-      }
-   }
-  }
- return false; // Timed out
+//循环
+void loop() {
+  doWiFiTick();
+  doTCPClientTick();
 }

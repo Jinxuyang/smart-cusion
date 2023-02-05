@@ -1,8 +1,3 @@
-//QQ交流群：824273231
-//日期：20200629
-//有问题加群咨询或者联系微信19092550573
-
-
 //获取应用实例
 const app = getApp()
 
@@ -10,8 +5,9 @@ Page({
   data: {
     uid: '7d54f85af42976ee3c2693e692a6bb59',
     topic: "light002",
-    device_status: "离线", //默认离线
-    powerstatus:"已关闭"   //默认关闭
+    deviceStatus: "离线", //默认离线
+    heaterStatus: "已关闭",   //默认关闭
+    temperature: 0
   },
   //”打开“按钮处理函数函数
   openclick: function() {
