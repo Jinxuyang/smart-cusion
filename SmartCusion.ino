@@ -99,12 +99,18 @@ void recvData() {
       int start = TcpClient_Buff.lastIndexOf("&msg=maxSitTime:");
       Serial.println("startIndex");
       Serial.println(start);
-      maxSitTime = TcpClient_Buff.substring(start + 1, start + 3).toInt() * 60 * 1000;
+      Serial.println(TcpClient_Buff.substring(start + 16, start + 18));
+      maxSitTime = TcpClient_Buff.substring(start + 16, start + 18).toInt() * 60 * 1000;
       Serial.println("maxSitTime");
       Serial.println(maxSitTime);
     }else if(TcpClient_Buff.indexOf("&msg=heaterStartTemp:") >= 0) {
       int start = TcpClient_Buff.lastIndexOf("&msg=heaterStartTemp:");
-      heaterStartTemp = TcpClient_Buff.substring(start + 1, start + 3).toInt();
+      Serial.println("startIndex");
+      Serial.println(start);
+      Serial.println(TcpClient_Buff.substring(start + 20, start + 22));
+      heaterStartTemp = TcpClient_Buff.substring(start + 21, start + 23).toInt();
+      Serial.println("heaterStartTemp");
+      Serial.println(heaterStartTemp);
     }
     TcpClient_Buff="";//清空字符串，以便下次接收
     TcpClient_BuffIndex = 0;

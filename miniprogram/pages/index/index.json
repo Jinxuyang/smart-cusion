@@ -1,3 +1,16 @@
 {
-  "usingComponents": {}
+  "usingComponents": {
+    "van-icon": "/dist/icon/index",
+    "van-cell": "/dist/cell/index",
+    "van-cell-group": "/dist/cell-group/index",
+    "van-row": "/dist/row/index",
+    "van-col": "/dist/col/index",
+    "van-button": "/dist/button/index",
+    "van-switch": "/dist/switch/index",
+    "van-stepper": "/dist/stepper/index",
+    "van-dialog": "/dist/dialog/index",
+    "van-overlay": "/dist/overlay/index",
+    "van-loading": "/dist/loading/index",
+    "van-field": "/dist/field/index"
+  }
 }
