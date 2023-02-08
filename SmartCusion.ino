@@ -63,9 +63,10 @@ void startTCPClient();
 void sendtoTCPServer(String p);
 
 float getTemperature() {
-  float tempVal = (analogRead(LM35) * 4.88 / 10);
-  //Serial.printf("temperature:%f C\n", tempVal);
-  return tempVal;
+  int analogValue = analogRead(LM35);
+  float millivolts = (analogValue/1024.0) * 3300; //3300 is the voltage provided by NodeMCU
+  float celsius = millivolts/10;
+  return 19.9;
 }
 
 void recvData() {
@@ -250,9 +251,9 @@ void doWiFiTick(){
 void setup() {
   Serial.begin(115200);
   //初始化引脚为输出
-  pinMode(LM35, INPUT);
   pinMode(PRESS, INPUT);  
-  pinMode(BUZZER, OUTPUT);  
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, HIGH);  
   pinMode(HEATER, OUTPUT); 
 }
 
@@ -272,18 +273,19 @@ void loop() {
     samplingTimeTick = millis();
   }
   
-
-  bool isSetTime = false;
+  if (digitalRead(PRESS) == 0) {
+    pressStatus = true;
+  } else {
+    pressStatus = false;
+  }
+  Serial.println(pressStatus);
   if (pressStatus) {
-    if (!isSetTime) {
-      sitTimeTick = millis();
-      isSetTime = true;
-    }
 
     if (millis() - sitTimeTick > maxSitTime) {
-      tone(BUZZER, buzzerFreq, 500);
+      digitalWrite(BUZZER, LOW);
     }
   } else {
-    isSetTime = false;
+    sitTimeTick = millis();
+    digitalWrite(BUZZER, HIGH);
   }
 }
