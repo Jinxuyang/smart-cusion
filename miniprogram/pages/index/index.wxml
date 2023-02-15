@@ -1,34 +1,30 @@
 <!--index.wxml-->
 <view >
 
-  <view class="van-hairline--surround title">智能座垫</view>
-
-
+  
 <!--设备状态-->
-  <van-cell-group>
-    <van-cell title="设备状态" value="{{deviceStatus}}" />
-  </van-cell-group>
-  <!--时间显示-->
-  <view class="dataTime">数据更新时间：{{dataTime}}</view>
-
-  <van-cell-group title="久坐状态">
-    <van-cell title="已经坐下了(min)" value="{{sitTime}}" />
-    <van-cell title="最久时间(min)" value="{{maxSitTime}}" />
+  <van-grid>
+    <van-grid-item icon="passed" text="{{deviceStatus}}" />
+  </van-grid>
+  
+  <van-grid>
+    <van-grid-item icon = "like-o" text="已经坐下了:{{sitTime}}min" />
+    <van-grid-item icon = "like-o" text="最久时间:{{maxSitTime}}min" />
     <van-field
-      label="设置最长时间(min)"
+      label="设置最长坐下时间"
       bind:change="setMaxSitTime"
     />
-  </van-cell-group>
-  <van-cell-group title="座垫加热">
-    <van-cell title="温度(℃)" value="{{temperature}}" />
-    <van-cell title="加热阈值(℃)" value="{{heaterStartTemp}}" />
+  </van-grid>
+  <van-grid title="座垫加热">
+    <van-grid-item icon = "fire-o"  text="温度:{{temperature}}℃" />
+    <van-grid-item icon = "fire-o"  text="阈值:{{heaterStartTemp}}℃" />
     <van-field
-      label="设置加热阈值(℃)"
+      label="设置阈值"
       bind:change="setHeaterStartTemp"
     />
-    <van-cell title="加热器模式" value="{{heaterMode}}" />
-    <van-cell title="加热器状态" value="{{heaterStatus}}" bind:click="turnHeater" />
-  </van-cell-group>
+    <van-grid-item icon = "fire-o" text="模式:{{heaterMode}}" />
+    <van-grid-item icon = "fire-o" text="状态:{{heaterStatus}}" bind:click="turnHeater" />
+  </van-grid>
   
   <van-overlay show="{{ isShowLoading }}">
   <view class="wrapper">

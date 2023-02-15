@@ -11,6 +11,8 @@
     "van-dialog": "/dist/dialog/index",
     "van-overlay": "/dist/overlay/index",
     "van-loading": "/dist/loading/index",
-    "van-field": "/dist/field/index"
+    "van-field": "/dist/field/index",
+    "van-grid": "/dist/grid/index",
+    "van-grid-item": "/dist/grid-item/index"
   }
 }

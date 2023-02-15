@@ -1,4 +1,6 @@
 #include <ESP8266WiFi.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 //巴法云服务器地址默认即可
 #define TCP_SERVER_ADDR "bemfa.com"
@@ -7,7 +9,7 @@
 
 /***********************传感器引脚设置************************/
 const int HEATER = D0;
-const int LM35 = A0;
+const int LM35 = D3;
 const int PRESS = D1;
 const int BUZZER = D2;
 /***********************************************************/
@@ -24,7 +26,7 @@ unsigned long samplingTimeTick = 0;
 
 unsigned long sitTimeTick = 0;
 
-unsigned long maxSitTime = 30 * 60 * 1000;
+unsigned long maxSitTime = 0.1 * 60 * 1000;
 
 unsigned int heaterStartTemp = 22;
 
@@ -35,12 +37,15 @@ int pressStatus = false;
 String heaterStatus = "off";
 String heaterMode = "auto";
 
+OneWire oneWire(LM35);
+DallasTemperature sensors(&oneWire);
+
 //led 控制函数
 void turnOnHeater();
 void turnOffHeater();
 
 //设置上传速率2s（1s<=upDataTime<=60s）
-#define upDataTime 5 * 1000
+#define upDataTime 1 * 1000
 
 //最大字节数
 #define MAX_PACKETSIZE 512
@@ -63,10 +68,11 @@ void startTCPClient();
 void sendtoTCPServer(String p);
 
 float getTemperature() {
-  int analogValue = analogRead(LM35);
-  float millivolts = (analogValue/1024.0) * 3300; //3300 is the voltage provided by NodeMCU
-  float celsius = millivolts/10;
-  return 19.9;
+  sensors.requestTemperatures();
+  // int analogValue = analogRead(LM35);
+  // float millivolts = (analogValue/1024.0) * 3300; //3300 is the voltage provided by NodeMCU
+  // float celsius = millivolts/10;
+  return sensors.getTempCByIndex(0);
 }
 
 void recvData() {
@@ -250,11 +256,13 @@ void doWiFiTick(){
 // 初始化，相当于main 函数
 void setup() {
   Serial.begin(115200);
+  sensors.begin();
   //初始化引脚为输出
   pinMode(PRESS, INPUT);  
   pinMode(BUZZER, OUTPUT);
   digitalWrite(BUZZER, HIGH);  
   pinMode(HEATER, OUTPUT); 
+  digitalWrite(HEATER, HIGH);
 }
 
 //循环
@@ -278,7 +286,6 @@ void loop() {
   } else {
     pressStatus = false;
   }
-  Serial.println(pressStatus);
   if (pressStatus) {
 
     if (millis() - sitTimeTick > maxSitTime) {
